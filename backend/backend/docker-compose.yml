@@ -1,0 +1,80 @@
+version: "3.9"
+
+services:
+
+  api:
+    build:
+      context: .
+      target: runtime
+    ports:
+      - "8000:8000"
+    environment:
+      ENVIRONMENT: development
+      DEBUG: "true"
+      DB_SERVER: sqlserver
+      DB_NAME: machine_monitor
+      DB_USER: sa
+      DB_PASSWORD: ${MSSQL_SA_PASSWORD:-Dev_Pass123!}
+      DB_DRIVER: ODBC Driver 18 for SQL Server
+      REDIS_URL: redis://redis:6379/0
+      # Azure AD — leave blank to skip JWT validation in dev
+      AZURE_TENANT_ID: ""
+      AZURE_CLIENT_ID: ""
+      APPINSIGHTS_CONNECTION_STRING: ""
+      CORS_ORIGINS: '["http://localhost:5173","http://localhost:3000"]'
+    volumes:
+      - .:/app                        # hot-reload in dev
+    command: >
+      uvicorn app.main:app
+        --host 0.0.0.0
+        --port 8000
+        --reload
+        --log-level debug
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: ${MSSQL_SA_PASSWORD:-Dev_Pass123!}
+      MSSQL_PID: Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    healthcheck:
+      test: /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "$$SA_PASSWORD" -Q "SELECT 1" -b
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - backend
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - backend
+
+volumes:
+  sqlserver_data:
+  redis_data:
+
+networks:
+  backend:
+    driver: bridge
