@@ -14,35 +14,26 @@ Performance notes
 - OPC UA quality codes: 192 = Good, 0 = Bad, 64 = Uncertain.
 """
 
-from sqlalchemy import Float, String, DateTime
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Float, String, DateTime, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
-
 from app.db.base import Base
 
 class SignalReading(Base):
-    # 1. Exact match to your Azure Table
+    # 1. Your existing live data table
     __tablename__ = "FactoryAggregated"
 
-    # 2. We use MachineName and EventEndTime together as the Primary Key 
-    # because Stream Analytics didn't give us an 'id' column.
+    # 2. The ForeignKey acts as the bridge. It tells Azure: 
+    # "The MachineName here MUST match an id in the machines table!"
     machine_id: Mapped[str] = mapped_column(
         String(200), 
+        ForeignKey("machines.id"), 
         name="MachineName", 
         primary_key=True
     )
     
-    timestamp: Mapped[datetime] = mapped_column(
-        DateTime, 
-        name="EventEndTime", 
-        primary_key=True
-    )
+    timestamp: Mapped[datetime] = mapped_column(DateTime, name="EventEndTime", primary_key=True)
+    value: Mapped[float] = mapped_column(Float, name="ActualPower")
 
-    # 3. The actual data value
-    value: Mapped[float] = mapped_column(
-        Float, 
-        name="ActualPower"
-    )
-
-    def __repr__(self) -> str:
-        return f"<SignalReading machine={self.machine_id!r} value={self.value} ts={self.timestamp}>"
+    # 3. The other side of the Bridge
+    machine = relationship("Machine", back_populates="readings")
